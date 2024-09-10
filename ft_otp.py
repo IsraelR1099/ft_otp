@@ -91,17 +91,74 @@ def generate_key():
     return None
 
 
-if __name__ == '__main__':
-    # Conver Unix time to time step(30 seconds)
+def save_key(key_bytes):
+    with open("ft_otp.key", "wb") as file:
+        file.write(key_bytes)
+        print("Key was successfully saved in ft_otp.key.")
+
+
+def get_n_bytes():
+    """
+    Conver Unix time to time step(30 seconds)
+    """
     ts = get_timestamp()
     ts_hex = hex(ts)[2:].zfill(16)
-    N_bytes = bytes.fromhex(ts_hex)
+    try:
+        N_bytes = bytes.fromhex(ts_hex)
+    except ValueError:
+        print("Error: Could not convert the timestamp to bytes.")
+        sys.exit(1)
     print(ts)
     print(ts_hex)
     print(N_bytes)
+    return N_bytes
+
+
+def compute_hmac(key_bytes, N_bytes):
+    """
+    Compute HMAC-SHA-1
+    """
+    hmac_result = hmac.new(key_bytes, N_bytes, hashlib.sha1).digest()
+    print(f"hmac: {hmac_result}")
+
+
+def parse_otp_file():
+    index = 1
+    if len(sys.argv) == 1 or len(sys.argv) > 3:
+        print("Usage: ft_otp.py [-g] [-k keyfile]")
+        sys.exit(1)
+    while index < len(sys.argv):
+        arg = sys.argv[index]
+        if arg.startswith('-'):
+            if any(char in arg for char in "gk"):
+                if arg == "-k":
+                    print("Key file")
+                    if index + 1 < len(sys.argv):
+                        if sys.argv[index + 1] == "ft_otp.key":
+                            print("Valid key file")
+                            with open(sys.argv[index + 1], "r") as file:
+                                content = file.read().strip()
+                            print(f"content es: {content}")
+                            n_bytes = get_n_bytes()
+                            content = bytes.fromhex(content)
+                            compute_hmac(content, n_bytes)
+                            sys.exit(0)
+                        else:
+                            print("Error: Invalid key file.")
+                            sys.exit(1)
+            else:
+                print(f"Error: No valid option '{arg}'")
+                sys.exit(1)
+        index += 1
+
+
+if __name__ == '__main__':
+    parse_otp_file()
     # Decode the key from the file
     key_bytes = generate_key()
+    if key_bytes is not None:
+        save_key(key_bytes)
+    else:
+        print("Error: No key provided.")
+        sys.exit(1)
     print(f"key: {key_bytes}")
-    # Compute HMAC-SHA-1
-    hmac = hmac.new(key_bytes, N_bytes, hashlib.sha1).digest()
-    print(f"hmac: {hmac}")
