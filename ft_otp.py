@@ -2,6 +2,7 @@ import time
 import sys
 import hashlib
 import hmac
+from cryptography.fernet import Fernet
 
 
 def get_timestamp():
@@ -51,15 +52,6 @@ def parse_key_file(arg):
         sys.exit(1)
 
 
-"""
-if arg == "-k":
-                    if index + 1 < len(sys.argv):
-                        print_token(sys.argv[index])
-                    else:
-                        print("Error: No .key file provided after -k.")
-                        sys.exit(1)
-"""
-
 
 def generate_key():
     index = 1
@@ -77,8 +69,8 @@ def generate_key():
                         try:
                             # Conthe hexadecimal key to bytes
                             key_bytes = bytes.fromhex(key)
-                            hashed_key = hashlib.sha256(key_bytes).hexdigest()
-                            return hashed_key
+                            encrypted_key = cipher.encrypt(key_bytes)
+                            return encrypted_key
                         except ValueError:
                             print("Error: Could not convert the key to bytes.")
                             sys.exit(1)
@@ -139,14 +131,18 @@ def parse_otp_file():
                 if arg == "-k":
                     if index + 1 < len(sys.argv):
                         if sys.argv[index + 1] == "ft_otp.key":
-                            with open(sys.argv[index + 1], "rb") as file:
-                                content = file.read().strip()
-                            if content:
-                                n_bytes = get_n_bytes()
-                                compute_hmac(content, n_bytes)
-                                sys.exit(0)
-                            else:
-                                print(f"Error: ft_otp.key is empty or not valid.")
+                            try:
+                                with open(sys.argv[index + 1], "rb") as file:
+                                    content = file.read().strip()
+                                if content:
+                                    n_bytes = get_n_bytes()
+                                    compute_hmac(content, n_bytes)
+                                    sys.exit(0)
+                                else:
+                                    print(f"Error: ft_otp.key is empty or not valid.")
+                                    sys.exit(1)
+                            except FileNotFoundError:
+                                print(f"Error: ft_otp file not found")
                                 sys.exit(1)
                         else:
                             print("Error: Invalid key file.")
