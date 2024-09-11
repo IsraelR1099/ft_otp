@@ -1,4 +1,5 @@
 import time
+import base64
 import sys
 import hashlib
 import hmac
@@ -69,6 +70,9 @@ def generate_key():
                         try:
                             # Conthe hexadecimal key to bytes
                             key_bytes = bytes.fromhex(key)
+                            key_fernet = Fernet.generate_key()
+                            print(f"key fernet '{key_fernet}'")
+                            cipher = Fernet(key_fernet)
                             encrypted_key = cipher.encrypt(key_bytes)
                             return encrypted_key
                         except ValueError:
@@ -86,8 +90,10 @@ def generate_key():
 
 
 def save_key(key_bytes):
+    decode_key = key_bytes.decode('utf-8')
+    print(f"decoded key: '{decode_key}'")
     with open("ft_otp.key", "w") as file:
-        file.write(key_bytes)
+        file.write(decode_key)
         print("Key was successfully saved in ft_otp.key.")
 
 
@@ -132,11 +138,15 @@ def parse_otp_file():
                     if index + 1 < len(sys.argv):
                         if sys.argv[index + 1] == "ft_otp.key":
                             try:
-                                with open(sys.argv[index + 1], "rb") as file:
+                                with open(sys.argv[index + 1], "r") as file:
                                     content = file.read().strip()
                                 if content:
+                                    print(f"content es: '{content}'")
+                                    fernet_key = input("Enter the Fernet key:").encode()
+                                    f = Fernet(fernet_key)
+                                    key_bytes = fernet.decrypt(content)
                                     n_bytes = get_n_bytes()
-                                    compute_hmac(content, n_bytes)
+                                    compute_hmac(key_bytes, n_bytes)
                                     sys.exit(0)
                                 else:
                                     print(f"Error: ft_otp.key is empty or not valid.")
@@ -157,6 +167,7 @@ if __name__ == '__main__':
     parse_otp_file()
     # Decode the key from the file
     key_bytes = generate_key()
+    print(f"key encrypted: '{key_bytes}'")
     if key_bytes is not None:
         save_key(key_bytes)
     else:
