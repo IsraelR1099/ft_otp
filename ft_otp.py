@@ -36,12 +36,13 @@ def is_valid_hex_key(content):
 
 def parse_key_file(arg):
     if arg.endswith(".txt"):
-        print("valid file")
         try:
             with open(arg, "r") as file:
                 content = file.read()
             if is_valid_hex_key(content):
                 return content
+            else:
+                sys.exit(1)
         except OSError:
             print("Error: Could not opent the file")
             sys.exit(1)
@@ -76,7 +77,8 @@ def generate_key():
                         try:
                             # Conthe hexadecimal key to bytes
                             key_bytes = bytes.fromhex(key)
-                            return key_bytes
+                            hashed_key = hashlib.sha256(key_bytes).hexdigest()
+                            return hashed_key
                         except ValueError:
                             print("Error: Could not convert the key to bytes.")
                             sys.exit(1)
@@ -92,7 +94,7 @@ def generate_key():
 
 
 def save_key(key_bytes):
-    with open("ft_otp.key", "wb") as file:
+    with open("ft_otp.key", "w") as file:
         file.write(key_bytes)
         print("Key was successfully saved in ft_otp.key.")
 
@@ -108,9 +110,6 @@ def get_n_bytes():
     except ValueError:
         print("Error: Could not convert the timestamp to bytes.")
         sys.exit(1)
-    print(ts)
-    print(ts_hex)
-    print(N_bytes)
     return N_bytes
 
 
@@ -119,7 +118,13 @@ def compute_hmac(key_bytes, N_bytes):
     Compute HMAC-SHA-1
     """
     hmac_result = hmac.new(key_bytes, N_bytes, hashlib.sha1).digest()
-    print(f"hmac: {hmac_result}")
+
+    #Dynamic truncation to get 6-digit OTP
+    offset = hmac_result[-1] & 0x0F
+    truncated_hash = hmac_result[offset:offset + 4]
+    code = int.from_bytes(truncated_hash, 'big') & 0x7FFFFFFF
+    otp = code % 10**6
+    print(f"OTP: {otp:06d}")
 
 
 def parse_otp_file():
@@ -132,17 +137,17 @@ def parse_otp_file():
         if arg.startswith('-'):
             if any(char in arg for char in "gk"):
                 if arg == "-k":
-                    print("Key file")
                     if index + 1 < len(sys.argv):
                         if sys.argv[index + 1] == "ft_otp.key":
-                            print("Valid key file")
-                            with open(sys.argv[index + 1], "r") as file:
+                            with open(sys.argv[index + 1], "rb") as file:
                                 content = file.read().strip()
-                            print(f"content es: {content}")
-                            n_bytes = get_n_bytes()
-                            content = bytes.fromhex(content)
-                            compute_hmac(content, n_bytes)
-                            sys.exit(0)
+                            if content:
+                                n_bytes = get_n_bytes()
+                                compute_hmac(content, n_bytes)
+                                sys.exit(0)
+                            else:
+                                print(f"Error: ft_otp.key is empty or not valid.")
+                                sys.exit(1)
                         else:
                             print("Error: Invalid key file.")
                             sys.exit(1)
@@ -161,4 +166,3 @@ if __name__ == '__main__':
     else:
         print("Error: No key provided.")
         sys.exit(1)
-    print(f"key: {key_bytes}")
