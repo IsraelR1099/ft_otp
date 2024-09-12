@@ -3,7 +3,12 @@ import base64
 import sys
 import hashlib
 import hmac
+import pyotp
+import qrcode
+import tkinter as tk
+
 from cryptography.fernet import Fernet
+from PIL import Image, ImageTk
 
 
 def get_timestamp():
@@ -14,7 +19,7 @@ def get_timestamp():
 
 
 def is_invalid(arg):
-    valid_options = "gk"
+    valid_options = "gkq"
     for char in arg:
         if char not in valid_options:
             print(f"Error: Invalid option '-{char}' found.")
@@ -37,9 +42,9 @@ def is_valid_hex_key(content):
 
 
 def parse_key_file(arg):
-    if arg.endswith(".txt"):
+    if arg.endswith(".hex"):
         try:
-            with open(arg, "r") as file:
+            with open(arg, "rb") as file:
                 content = file.read()
             if is_valid_hex_key(content):
                 return content
@@ -49,9 +54,18 @@ def parse_key_file(arg):
             print("Error: Could not opent the file")
             sys.exit(1)
     else:
-        print("Error: Please provide a valid .txt file.")
+        print("Error: Please provide a valid .hex file.")
         sys.exit(1)
 
+
+def generate_fernet_and_save():
+    """
+    Generate a Fernet key and save it in a file.
+    """
+    key = Fernet.generate_key()
+    with open("keygen.key", "wb") as file:
+        file.write(key)
+    return key
 
 
 def generate_key():
@@ -62,19 +76,17 @@ def generate_key():
     while index < len(sys.argv):
         arg = sys.argv[index]
         if arg.startswith('-'):
-            if any(char in arg for char in "gk"):
+            if any(char in arg for char in "gkq"):
                 is_invalid(arg[1:])
                 if arg == "-g":
                     if index + 1 < len(sys.argv):
-                        key = parse_key_file(sys.argv[index + 1])
+                        key_file = parse_key_file(sys.argv[index + 1])
                         try:
-                            # Conthe hexadecimal key to bytes
-                            key_bytes = bytes.fromhex(key)
-                            key_fernet = Fernet.generate_key()
-                            print(f"key fernet '{key_fernet}'")
-                            cipher = Fernet(key_fernet)
-                            encrypted_key = cipher.encrypt(key_bytes)
-                            return encrypted_key
+                            # Generate a Fernet key and save it
+                            key_fernet = generate_fernet_and_save()
+                            f = Fernet(key_fernet)
+                            encrypted_data = f.encrypt(key_file)
+                            return encrypted_data
                         except ValueError:
                             print("Error: Could not convert the key to bytes.")
                             sys.exit(1)
@@ -90,10 +102,8 @@ def generate_key():
 
 
 def save_key(key_bytes):
-    decode_key = key_bytes.decode('utf-8')
-    print(f"decoded key: '{decode_key}'")
-    with open("ft_otp.key", "w") as file:
-        file.write(decode_key)
+    with open("ft_otp.key", "wb") as file:
+        file.write(key_bytes)
         print("Key was successfully saved in ft_otp.key.")
 
 
@@ -117,12 +127,31 @@ def compute_hmac(key_bytes, N_bytes):
     """
     hmac_result = hmac.new(key_bytes, N_bytes, hashlib.sha1).digest()
 
-    #Dynamic truncation to get 6-digit OTP
+    # Dynamic truncation to get 6-digit OTP
     offset = hmac_result[-1] & 0x0F
     truncated_hash = hmac_result[offset:offset + 4]
     code = int.from_bytes(truncated_hash, 'big') & 0x7FFFFFFF
     otp = code % 10**6
     print(f"OTP: {otp:06d}")
+    totp = pyotp.TOTP(base64.b32encode(key_bytes).decode())
+    print(f"pyotp: {totp.now()}")
+
+
+def get_key():
+    """
+    Get the key from the file.
+    """
+    try:
+        with open("keygen.key", "rb") as file:
+            content = file.read().strip()
+        if content:
+            return content
+        else:
+            print("Error: keygen.key is empty or not valid.")
+            sys.exit(1)
+    except FileNotFoundError:
+        print("Error: keygen.key file not found")
+        sys.exit(1)
 
 
 def parse_otp_file():
@@ -133,41 +162,97 @@ def parse_otp_file():
     while index < len(sys.argv):
         arg = sys.argv[index]
         if arg.startswith('-'):
-            if any(char in arg for char in "gk"):
+            if any(char in arg for char in "gkq"):
                 if arg == "-k":
                     if index + 1 < len(sys.argv):
                         if sys.argv[index + 1] == "ft_otp.key":
                             try:
-                                with open(sys.argv[index + 1], "r") as file:
+                                with open(sys.argv[index + 1], "rb") as file:
                                     content = file.read().strip()
                                 if content:
-                                    print(f"content es: '{content}'")
-                                    fernet_key = input("Enter the Fernet key:").encode()
-                                    f = Fernet(fernet_key)
-                                    key_bytes = fernet.decrypt(content)
                                     n_bytes = get_n_bytes()
-                                    compute_hmac(key_bytes, n_bytes)
+                                    key_file = get_key()
+                                    f = Fernet(key_file)
+                                    decrypted_data = f.decrypt(content)
+                                    compute_hmac(decrypted_data, n_bytes)
                                     sys.exit(0)
                                 else:
-                                    print(f"Error: ft_otp.key is empty or not valid.")
+                                    print("Error: ft_otp.key is empty or not valid.")
                                     sys.exit(1)
                             except FileNotFoundError:
-                                print(f"Error: ft_otp file not found")
+                                print("Error: ft_otp file not found")
                                 sys.exit(1)
                         else:
                             print("Error: Invalid key file.")
                             sys.exit(1)
+                    else:
+                        print("Error: No file provided after -k.")
+                        sys.exit(1)
             else:
                 print(f"Error: No valid option '{arg}'")
                 sys.exit(1)
         index += 1
 
 
+def show_qr_code():
+    """
+    Show the QR code in the terminal.
+    """
+    window = tk.Tk()
+    window.title("OTP QR Code")
+
+    # Open the saved QR code
+    img = Image.open("qr_code.png")
+    photo = ImageTk.PhotoImage(img)
+
+    # Add the image to a label widget and pack it
+    label = tk.Label(window, image=photo)
+    label.image = photo
+    label.pack()
+
+    window.mainloop()
+
+
+def qr_code():
+    """
+    Generate a QR code for the OTP key.
+    """
+    index = 1
+    if len(sys.argv) == 1 or len(sys.argv) > 3:
+        print("Usage: ft_otp.py [-g] [-k keyfile]")
+        sys.exit(1)
+    while index < len(sys.argv):
+        arg = sys.argv[index]
+        if arg.startswith('-'):
+            if any(char in arg for char in "gkq"):
+                if arg == "-q":
+                    # Generate a random key
+                    key = pyotp.random_base32()
+                    totp = pyotp.TOTP(key)
+                    print(f"Your secret key is: {totp.secret}")
+                    # Generate a provisioning URI for the QR code
+                    uri = totp.provisioning_uri(name="test", issuer_name="test")
+                    # Generate the QR code
+                    qr = qrcode.make(uri)
+                    qr.save("qr_code.png")
+                    print("QR code was successfully saved in qr_code.png.")
+                    N_bytes = get_n_bytes()
+                    compute_hmac(key.encode(), N_bytes)
+                    show_qr_code()
+                    sys.exit(0)
+            else:
+                print(f"Error: No valid option '{arg}'")
+                sys.exit(1)
+        index += 1
+
+    sys.exit(0)
+
+
 if __name__ == '__main__':
+    qr_code()
     parse_otp_file()
     # Decode the key from the file
     key_bytes = generate_key()
-    print(f"key encrypted: '{key_bytes}'")
     if key_bytes is not None:
         save_key(key_bytes)
     else:
