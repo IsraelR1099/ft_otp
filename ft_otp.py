@@ -1,6 +1,7 @@
 import time
 import base64
 import sys
+import os
 import hashlib
 import hmac
 import pyotp
@@ -194,6 +195,21 @@ def parse_otp_file():
         index += 1
 
 
+def generate_base32_key():
+    """
+    Generate a random base32 key.
+    """
+    return base64.b32encode(os.urandom(10)).decode('utf-8').rstrip('=')
+
+
+def generate_totp_uri(key, name, issuer_name):
+    """
+    Generate a provisioning URI for the QR code.
+    """
+    uri = f"otpauth://totp/{name}?secret={key}&issuer={issuer_name}"
+    return uri
+
+
 def show_qr_code():
     """
     Show the QR code in the terminal.
@@ -227,11 +243,11 @@ def qr_code():
             if any(char in arg for char in "gkq"):
                 if arg == "-q":
                     # Generate a random key
-                    key = pyotp.random_base32()
-                    totp = pyotp.TOTP(key)
-                    print(f"Your secret key is: {totp.secret}")
+                    key = generate_base32_key()
+                    print(f"Your secret key is: {key}")
                     # Generate a provisioning URI for the QR code
-                    uri = totp.provisioning_uri(name="test", issuer_name="test")
+                    uri = generate_totp_uri(key, "test", "test")
+                    print(f"Your provisioning URI is: {uri}")
                     # Generate the QR code
                     qr = qrcode.make(uri)
                     qr.save("qr_code.png")
@@ -244,7 +260,6 @@ def qr_code():
                 print(f"Error: No valid option '{arg}'")
                 sys.exit(1)
         index += 1
-
 
 
 if __name__ == '__main__':
