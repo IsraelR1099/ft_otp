@@ -10,6 +10,7 @@ import tkinter as tk
 
 from cryptography.fernet import Fernet
 from PIL import Image, ImageTk
+import cryptography.fernet
 
 
 def get_timestamp():
@@ -52,7 +53,7 @@ def parse_key_file(arg):
             else:
                 sys.exit(1)
         except OSError:
-            print("Error: Could not opent the file")
+            print("Error: Could not open the file")
             sys.exit(1)
     else:
         print("Error: Please provide a valid .hex file.")
@@ -173,9 +174,13 @@ def parse_otp_file():
                                 if content:
                                     n_bytes = get_n_bytes()
                                     key_file = get_key()
-                                    f = Fernet(key_file)
-                                    decrypted_data = f.decrypt(content)
-                                    compute_hmac(decrypted_data, n_bytes)
+                                    try:
+                                        f = Fernet(key_file)
+                                        decrypted_data = f.decrypt(content)
+                                        compute_hmac(decrypted_data, n_bytes)
+                                    except cryptography.fernet.InvalidToken:
+                                        print("Error: Invalid key or corrupted file.")
+                                        sys.exit(1)
                                     sys.exit(0)
                                 else:
                                     print("Error: ft_otp.key is empty or not valid.")
